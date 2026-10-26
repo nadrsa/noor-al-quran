@@ -1,0 +1,118 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // Supabase connection pooler needs this in some setups
+  directUrl = env("DIRECT_URL")
+}
+
+model Reader {
+  id             String   @id @default(cuid())
+  name           String   @unique
+  displayName    String
+  avatarColor    String   @default("#0d9488")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Current reading position
+  currentSurah   Int      @default(1)
+  currentVerse   Int      @default(0)
+
+  // Total stats (denormalized for quick access)
+  totalVersesRead Int     @default(0)
+  readingStreak   Int     @default(0)
+  lastReadDate    DateTime?
+
+  progress       Progress[]
+  bookmarks      Bookmark[]
+  goals          Goal[]
+  memberships    GroupMember[]
+  sessions       ReadingSession[]
+}
+
+model Progress {
+  id           String   @id @default(cuid())
+  readerId     String
+  reader       Reader   @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  surahNumber  Int
+  verseNumber  Int
+  action       String   // "read" | "reread"
+  readAt       DateTime @default(now())
+
+  @@index([readerId, surahNumber, verseNumber])
+  @@index([readerId, readAt])
+}
+
+model Bookmark {
+  id           String   @id @default(cuid())
+  readerId     String
+  reader       Reader   @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  surahNumber  Int
+  verseNumber  Int
+  note         String?
+  label        String?
+  createdAt    DateTime @default(now())
+
+  @@unique([readerId, surahNumber, verseNumber])
+  @@index([readerId])
+}
+
+model Goal {
+  id              String   @id @default(cuid())
+  readerId        String
+  reader          Reader   @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  targetDate      DateTime
+  startSurah      Int      @default(1)
+  startVerse      Int      @default(0)
+  endSurah        Int      @default(114)
+  endVerse        Int      @default(6)
+  versesPerDay    Float    @default(0)  // calculated
+  status          String   @default("active")  // active | completed | abandoned
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([readerId, status])
+}
+
+model ReadingSession {
+  id           String   @id @default(cuid())
+  readerId     String
+  reader       Reader   @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  surahNumber  Int
+  startVerse   Int
+  endVerse     Int
+  versesCount  Int
+  durationSec  Int      @default(0)
+  startedAt    DateTime @default(now())
+  endedAt      DateTime?
+
+  @@index([readerId, startedAt])
+}
+
+model Group {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  inviteCode   String   @unique
+  createdAt    DateTime @default(now())
+
+  members      GroupMember[]
+}
+
+model GroupMember {
+  id           String   @id @default(cuid())
+  groupId      String
+  group        Group     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  readerId     String
+  reader       Reader    @relation(fields: [readerId], references: [id], onDelete: Cascade)
+  role         String   @default("member") // owner | member
+  joinedAt     DateTime @default(now())
+
+  @@unique([groupId, readerId])
+}
